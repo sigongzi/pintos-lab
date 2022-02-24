@@ -70,6 +70,10 @@ static void locate_block_devices (void);
 static void locate_block_device (enum block_type, const char *name);
 #endif
 
+#define MAXCOMMANDLINE 64
+static char *command;
+
+
 int pintos_init (void) NO_RETURN;
 
 /** Pintos main entry point. */
@@ -134,6 +138,48 @@ pintos_init (void)
     run_actions (argv);
   } else {
     // TODO: no command line passed to kernel. Run interactively 
+    command = calloc(MAXCOMMANDLINE, 1);
+    while(true) {
+      printf ("PKUOS>");
+      int len = 0;
+      uint8_t c;
+      while ((c = input_getc()) != 0xD && len < MAXCOMMANDLINE - 1) {
+        // MAXCOMMANDLINE == BUFFER_SIZE, we do not handle the command longer than 63
+        // the 0xD is the acsii for carriage return
+        if (c >= 0x20 && c <= 0x7e) {
+          // c is a printable character
+          putchar(c);
+          command[len++] = c;
+        }
+        if(c == 0x7f || c == 0x8) {
+          if(len) {
+            --len;
+            putchar(c);
+            putchar(' ');
+            putchar(c);
+          }
+        }
+      }
+      putchar('\n');
+      if(len == MAXCOMMANDLINE - 1) {
+        printf("COMMAND TOO LONG\n");
+        input_init();
+        continue;
+      }
+      command[len++] = '\0';
+
+      if (!strcmp(command, "whoami")) {
+        printf("2000012957\n");
+      }
+      else if(!strcmp(command, "exit")) {
+        putchar('\n');
+        shutdown_power_off();
+      }
+      else {
+        printf(command);
+        printf(" invalid\n");
+      }
+    }
   }
 
   /* Finish up. */
