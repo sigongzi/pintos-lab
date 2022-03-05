@@ -376,23 +376,36 @@ thread_set_priority (int new_priority)
 {
   struct thread *t = thread_current();
   struct thread *ready_first;
+  struct thread *donation_first;
   enum intr_level oldlevel;
+  int donation_priority;
   t->origin_priority = new_priority;
   if(t->priority <= new_priority) {
     t->priority = new_priority;
     t->donation_state = 0;
   }
   else {
-    if((!(t->donation_state)) && t->priority > new_priority) {
-      oldlevel = intr_disable();
+    oldlevel = intr_disable();
+    if(!list_empty(&t->donation_list)) {
+      donation_first = list_entry(list_begin(&t->donation_list), struct thread, donation_elem);
+      donation_priority = donation_first->priority;
+      if (donation_priority > new_priority) {
+        t->priority = donation_priority;
+        t->donation_state = 1;
+        thread_yield();
+      }
+    }
+
+    if((!t->donation_state) && t->priority > new_priority) {
+      // t had no donation larger than new_priority here
       ready_first = list_entry (list_begin(&ready_list), struct thread, elem);
       t->priority = new_priority;
       if (new_priority < ready_first->priority) {
         thread_yield();
       }
-      intr_set_level(oldlevel);
+      
     }
-
+    intr_set_level(oldlevel);
   }
 }
 
@@ -685,6 +698,7 @@ void adjust_elem(struct thread *t) {
 }
 void thread_acquire_donation(struct thread *dest, struct thread *src, int level) {
   if(level >= NESTED_MAX) return;
+  // the donation is added to the list whether it is larger than destination priority
   list_insert_ordered(&dest->donation_list, &src->donation_elem, priority_higher_donation, NULL);
   
   if (src->priority > dest->priority) {
@@ -702,19 +716,20 @@ void thread_release_donation(struct lock* lock) {
   struct thread* cur = thread_current();
   struct list_elem* e;
   struct thread *t;
+  // remove the donation
   for(e = list_begin(&cur->donation_list) ; e != list_end(&cur->donation_list) ; e = list_next(e)) {
     t = list_entry(e, struct thread, donation_elem);
     if(t->wait_lock == lock) {
       list_remove(e);
     }
   }
+  // update the priority
   if(list_empty(&cur->donation_list)) {
     cur->priority = cur->origin_priority;
     cur->donation_state = 0;
   }
   else {
     t = list_entry(list_begin(&cur->donation_list), struct thread, donation_elem);
-    //printf("current thread: %s, donation list: %s",cur->name, t->name);
     if(t->priority > cur->origin_priority) {
       cur->priority = t->priority;
       cur->donation_state = 1;

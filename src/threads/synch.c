@@ -250,7 +250,6 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  // the current thread holds the lock;
   enum intr_level oldlevel;
   
   oldlevel = intr_disable();
@@ -258,8 +257,6 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
   intr_set_level(oldlevel);
-
-
 }
 
 /** Returns true if the current thread holds LOCK, false
@@ -278,7 +275,8 @@ struct semaphore_elem
   {
     struct list_elem elem;              /**< List element. */
     struct semaphore semaphore;         /**< This semaphore. */
-    struct thread *t;
+    struct thread *t;                   /**< Record the thread using 
+                                          this semaphore to wait a condition variable*/
   };
 
 /** Initializes condition variable COND.  A condition variable
