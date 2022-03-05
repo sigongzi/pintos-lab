@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
+#include "threads/fpreal.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -103,6 +104,10 @@ struct thread
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /**< List element. */
 
+   /*MLFQ variable*/
+   int niceness; /*Niceness between [-20,20]*/
+   fpreal_t recent_cpu;
+
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /**< Page directory. */
@@ -135,6 +140,7 @@ const char *thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+void thread_secondly_update(void);
 
 /** Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);

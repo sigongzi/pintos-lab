@@ -181,6 +181,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_wakeup(ticks);
+  if(ticks % TIMER_FREQ == 0) {
+    // printf("ticks is %d\n", ticks);
+    intr_secondly_update_on_return ();
+  }
   thread_tick ();
 }
 
