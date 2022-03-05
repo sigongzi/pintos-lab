@@ -28,7 +28,7 @@ static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
-static void real_time_delay (int64_t num, int32_t denom);
+static void real_time_delay (int64_t num, int32_t denom); 
 
 /** Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -89,11 +89,20 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
+  if(ticks < 0) return;
   int64_t start = timer_ticks ();
+  int64_t end = start + ticks;
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  struct thread* cur = thread_current();
+
+  enum intr_level oldlevel;
+  oldlevel = intr_disable();
+  // the schedule must call with interrupts off
+  // so we do synchronization by disabling all the interrupts
+  cur->wakeup_time = end;
+  thread_insert_sleep(cur);
+  thread_block();
+  intr_set_level(oldlevel);
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,6 +180,7 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  thread_wakeup(ticks);
   thread_tick ();
 }
 

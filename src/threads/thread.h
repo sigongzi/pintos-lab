@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -23,6 +24,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /**< Lowest priority. */
 #define PRI_DEFAULT 31                  /**< Default priority. */
 #define PRI_MAX 63                      /**< Highest priority. */
+#define NESTED_MAX 8
 
 /** A kernel thread or user process.
 
@@ -88,6 +90,13 @@ struct thread
     char name[16];                      /**< Name (for debugging purposes). */
     uint8_t *stack;                     /**< Saved stack pointer. */
     int priority;                       /**< Priority. */
+    int donation_state;
+    int origin_priority;
+    struct lock *wait_lock;
+    
+    int64_t wakeup_time;
+    struct list donation_list;
+    struct list_elem donation_elem;
     struct list_elem allelem;           /**< List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
@@ -137,5 +146,19 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+bool priority_higher
+(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool wakeup_earlier
+(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED); 
+bool priority_higher_donation
+(const struct list_elem *a,const struct list_elem *b, void *aux UNUSED);
+
+void thread_insert_sleep(struct thread *t);
+void thread_wakeup(int64_t ticks);
+void thread_insert_ready(struct thread *t);
+void thread_acquire_donation(struct thread *dest, struct thread *src, int level);
+void thread_release_donation(struct lock* lock);
+
+void adjust_elem(struct thread *t);
 
 #endif /**< threads/thread.h */
