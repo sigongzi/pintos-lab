@@ -200,24 +200,31 @@ lock_acquire (struct lock *lock)
   bool success;
   struct thread *cur = thread_current(), *target;
   enum intr_level oldlevel;
-  success = sema_try_down(&lock->semaphore);
   
-  if (success) {
-    lock->holder = cur;
-    return;
-  }
-  else {
-    target = lock->holder;
-    cur->wait_lock = lock;
-    
-    oldlevel = intr_disable();
-    thread_acquire_donation(target, cur, 0);
-    intr_set_level(oldlevel);
-
+  if (thread_mlfqs) {
     sema_down(&lock->semaphore);
     lock->holder = cur;
   }
-  cur->wait_lock = NULL;
+  else {
+    success = sema_try_down(&lock->semaphore);
+    
+    if (success) {
+      lock->holder = cur;
+      return;
+    }
+    else {
+      target = lock->holder;
+      cur->wait_lock = lock;
+      
+      oldlevel = intr_disable();
+      thread_acquire_donation(target, cur, 0);
+      intr_set_level(oldlevel);
+
+      sema_down(&lock->semaphore);
+      lock->holder = cur;
+    }
+    cur->wait_lock = NULL;
+  }
 }
 
 /** Tries to acquires LOCK and returns true if successful or false
@@ -253,7 +260,10 @@ lock_release (struct lock *lock)
   enum intr_level oldlevel;
   
   oldlevel = intr_disable();
-  thread_release_donation(lock);
+  if (!thread_mlfqs) {
+    thread_release_donation(lock);
+  }
+  
   lock->holder = NULL;
   sema_up (&lock->semaphore);
   intr_set_level(oldlevel);
