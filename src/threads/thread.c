@@ -32,7 +32,7 @@ static struct list sleep_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
-/** a list to record threads in this priority */
+/** mlfq lists to record threads in this priority */
 static struct list mlfq[PRI_MAX + 1];
 
 /** Idle thread. */
@@ -47,7 +47,7 @@ static struct lock tid_lock;
 /** caculate load average of the whole system */
 static fpreal_t load_avg;
 
-/** the number of threads in READY of RUNNING state*/
+/** the number of threads in READY of RUNNING state */
 static uint32_t ready_threads;
 /** Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -208,7 +208,6 @@ thread_tick (void)
     if(thread_ticks % 4 == 0) {
 
       cur->priority = calculate_priority(cur);
-      //printf("cur thread name : %s, priority: %d\n", cur->name, cur->priority);
       if (cur->priority <= get_ready_first_prioriry()) {
         intr_yield_on_return();
       }
@@ -434,7 +433,6 @@ void thread_secondly_update(void) {
     return;
   }
   enum intr_level oldlevel = intr_disable();
-  // printf("ready threads %d\n", ready_threads);
   struct list_elem *e;
   struct thread *cur = thread_current();
   struct thread *t = cur;
@@ -445,15 +443,7 @@ void thread_secondly_update(void) {
   for (e = list_begin(&all_list); e != list_end(&all_list) ; e = list_next(e)) {
     t = list_entry (e, struct thread, allelem);
     t->recent_cpu = addi(mul(c, t->recent_cpu), t->niceness);
-    /*new_priority = calculate_priority(t);
-    if(t->status == THREAD_READY && new_priority != t->priority) {
-      printf("%s thread priority changed to %d\n",t->name, new_priority);
-      t->priority = new_priority;
-      list_remove(&t->elem);
-      thread_insert_mlfq(t);
-    }*/
   }
-  //printf("%s cur priority is %d\n", cur->name, cur->priority);
   intr_set_level(oldlevel);
 }
 /** Invoke function 'func' on all threads, passing along 'aux'.
