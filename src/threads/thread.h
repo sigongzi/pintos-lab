@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "threads/synch.h"
 #include "threads/fpreal.h"
+#include "filesys/file.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -111,6 +112,14 @@ struct thread
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /**< Page directory. */
+   int exit_status;
+   struct semaphore wait_child_load;
+   struct semaphore end_process;
+   struct list child_list;
+   struct list file_list;
+   struct list_elem as_child;
+   struct thread *parent;
+   struct file *load_file;
 #endif
 
    /* Owned by thread.c. */

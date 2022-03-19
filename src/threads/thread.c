@@ -12,6 +12,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/fpreal.h"
+#include "threads/init.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -159,6 +160,14 @@ thread_init (void)
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
+#ifdef USERPROG
+  initial_thread->pagedir = NULL;
+  list_init(&initial_thread->child_list);
+  list_init(&initial_thread->file_list);
+  sema_init(&initial_thread->wait_child_load, 0);
+  sema_init(&initial_thread->end_process, 0);
+  initial_thread->parent = NULL;
+#endif
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
   initial_thread->niceness = 0;
@@ -263,6 +272,10 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+#ifdef USERPROG
+  t->pagedir = NULL;
+  
+#endif
   tid = t->tid = allocate_tid ();
   t->niceness = thread_current()->niceness; // inherit niceness
   if (thread_mlfqs) {
@@ -436,7 +449,6 @@ void thread_secondly_update(void) {
   struct list_elem *e;
   struct thread *cur = thread_current();
   struct thread *t = cur;
-  int new_priority;
   load_avg = calculate_load_avg();
   fpreal_t c = muli(load_avg, 2);
   c = div(c, addi(c, 1));
@@ -747,7 +759,8 @@ thread_schedule_tail (struct thread *prev)
 
 #ifdef USERPROG
   /* Activate the new address space. */
-  process_activate ();
+  if (init_page_dir != NULL)
+    process_activate ();
 #endif
 
   /* If the thread we switched from is dying, destroy its struct
@@ -758,6 +771,12 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
+      #ifdef USERPROG
+        /* if it has father, wait its father to free its memory */
+        if (prev->parent != NULL) {
+          return;
+        }
+      #endif
       palloc_free_page (prev);
     }
 }
