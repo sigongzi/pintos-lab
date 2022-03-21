@@ -112,14 +112,17 @@ struct thread
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir; /**< Page directory. */
-   int exit_status;
-   struct semaphore wait_child_load;
-   struct semaphore end_process;
-   struct list child_list;
-   struct list file_list;
-   struct list_elem as_child;
-   struct thread *parent;
-   struct file *load_file;
+   int exit_status; /*save exit status for WAIT function to read */
+   struct semaphore wait_child_load; /* wait child load finish in EXEC function*/
+   struct semaphore end_process; /* wait child end in WAIT function or 
+    in EXEC function changing child parent pointer to NULL before child thread exits */
+   struct semaphore parent_sema; /* changing parent pointer in child thread when exits */
+   struct list child_list; /* link all the child thread in a list*/
+   struct list file_list; /* link all the file pointer in a list */
+   struct list_elem as_child; /* be linked as an element in child_list */
+   struct thread *parent; /* record parent, if parent is NULL, it can delete itself. 
+   Or it must be recycled when its parent exits*/
+   struct file *load_file; /* the file loaded. It denies to be written before the process ends */
 #endif
 
    /* Owned by thread.c. */

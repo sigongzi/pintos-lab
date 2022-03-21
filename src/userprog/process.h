@@ -18,7 +18,7 @@ void process_activate (void);
 int process_add_file(struct file *f);
 struct file* process_find_file(int fd);
 bool process_close_file(int fd);
-void process_clear(void);
+void process_clear_file(void);
 struct argument_bearer{
     char buf[ARGSIZE];
     uint32_t argc;
@@ -27,9 +27,9 @@ struct argument_bearer{
 };
 
 typedef struct {
-    int fd;
-    struct file *f;
-    struct list_elem elem;
+    int fd; /* file descriptor for process */
+    struct file *f; /* file pointer in file system */
+    struct list_elem elem; /* element in file_list per process */
 }file_descriptor;
 
 #endif /**< userprog/process.h */

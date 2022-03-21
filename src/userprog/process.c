@@ -88,7 +88,10 @@ static bool load_argument_to_stack
   *esp = tmp_esp;
   return true;
 }
-
+/*
+  helper function in process.c
+  find child thread by tid 
+*/
 static struct thread * find_child_thread(tid_t tid) {
   struct thread *cur = thread_current();
   struct thread *ch = NULL;
@@ -102,14 +105,20 @@ static struct thread * find_child_thread(tid_t tid) {
        }
   return ch;
 }
-
+/*
+  helper function in process.c
+  delete file_descriptor structure
+*/
 static void close_fd(file_descriptor *fd) {
   if(fd == NULL) return;
   file_close(fd->f);
   list_remove(&fd->elem);
   free(fd);
 }
-
+/*
+  helper function in process.c
+  find file_descriptor structure
+*/
 static file_descriptor* find_fd(int fd) {
   file_descriptor *fd_save = NULL;
   struct thread *cur = thread_current();
@@ -125,7 +134,10 @@ static file_descriptor* find_fd(int fd) {
   return fd_save;
 }
 
-
+/*
+  interface for syscall.c
+  For OPEN syscall to add file descriptor in process
+*/
 int process_add_file(struct file *f) {
   file_descriptor *fd_save = calloc(1, sizeof(file_descriptor));
   struct list_elem *e;
@@ -146,14 +158,20 @@ int process_add_file(struct file *f) {
   return alloc_fd;
 }
 
-
+/*
+  interface for syscall.c
+  For WRITE syscall to find file structure in process
+*/
 
 struct file* process_find_file(int fd) {
   file_descriptor *fd_save = find_fd(fd);
   if (fd_save == NULL) return NULL;
   return fd_save->f;
 }
-
+/*
+  interface for syscall.c
+  For CLOSE syscall to close file descriptor with specific fd
+*/
 
 bool process_close_file(int fd) {
   file_descriptor *fd_save = find_fd(fd);
@@ -162,8 +180,12 @@ bool process_close_file(int fd) {
   return 1;
 }
 
+/*
+  interface for syscall.c
+  For EXIT syscall to clear all file record and release memory resource
+*/
 void
-process_clear() {
+process_clear_file() {
   struct list_elem *e;
   struct thread *cur = thread_current();
   for (e = list_begin(&cur->file_list); e != list_end(&cur->file_list);
@@ -172,6 +194,10 @@ process_clear() {
       e = list_next(e);
       close_fd(fd_ano);
     }
+  if(cur->load_file) {
+    file_allow_write(cur->load_file);
+    file_close(cur->load_file);
+  }
   
 }
 
@@ -240,6 +266,7 @@ start_process (void *file_name_)
   list_insert(list_begin(&cur->parent->child_list), &cur->as_child);
   sema_init(&cur->wait_child_load, 0);
   sema_init(&cur->end_process, 0);
+  sema_init(&cur->parent_sema, 1);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -257,7 +284,9 @@ start_process (void *file_name_)
   palloc_free_page (arg); 
   if (!success) {
     cur->exit_status = -LOAD_FAIL;
-    /* change the status before we */
+    /* clear file (may open in load() function) with the lock hold by parent process */
+    process_clear_file();
+    /* unlink the parent(in parent process_execute() before it exits) */
     sema_up(&cur->parent->wait_child_load);
     sema_down(&cur->end_process);
     thread_exit ();
@@ -305,10 +334,7 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   
-  if(cur->load_file) {
-    file_allow_write(cur->load_file);
-    file_close(cur->load_file);
-  }
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -325,7 +351,22 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  
+  sema_down(&cur->parent_sema);
+  struct list_elem *e;
+  for (e = list_begin(&cur->child_list) ; e != list_end(&cur->child_list);
+    e = list_next(e)) {
+      struct thread *ch = list_entry(e, struct thread, as_child);
+      sema_down(&ch->parent_sema);
+      if(ch->status == THREAD_DYING) {
+        sema_up(&ch->parent_sema);
+        palloc_free_page(ch);
+      }
+      else {
+        ch->parent = NULL;
+        sema_up(&ch->parent_sema);
+      }
+    }
+  sema_up(&cur->parent_sema);
   sema_up(&cur->end_process);
 }
 

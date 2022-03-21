@@ -37,9 +37,13 @@ static bool get_arg(int ord, uint32_t *arg);
 static bool getnbuf(char *uaddr, char *buf, size_t n);
 static int getnstr(char *uaddr, char *buf, size_t n);
 
-
+static inline uint32_t Min(uint32_t a, uint32_t b) {
+  return a < b ? a : b;
+}
 static const uint32_t BUFSIZE = 128;
 static const uint32_t FILENAME_LENGTH = 15; 
+
+
 
 static void *user_stack;
 
@@ -90,6 +94,9 @@ put_user (uint8_t *udst, uint8_t byte)
   return error_code != -1;
 }
 
+/*
+  get 4 bytes a word from user address uaddr
+*/
 static bool
 get_word(uint8_t *uaddr, uint32_t *arg) {
   uint32_t res = 0;
@@ -104,12 +111,20 @@ get_word(uint8_t *uaddr, uint32_t *arg) {
   return true;
 }
 
+/*
+  get the ord th argument
+  the start address of the argument is user_stack + ord * 4
+*/
 static bool
 get_arg(int ord, uint32_t *arg) {
   if (!get_word(user_stack + ord * 4, arg)) return false;
   return true;
 }
 
+/*
+  get content from user address for exact n bytes
+  return false due to invalid memory visit
+*/
 static bool
 getnbuf(char *uaddr, char *buf, size_t n) {
   size_t i;
@@ -125,7 +140,10 @@ getnbuf(char *uaddr, char *buf, size_t n) {
 
   return true;
 }
-
+/*
+  put content to user address for exact n bytes
+  return false due to invalid memory visit
+*/
 static bool
 putnbuf(char *uaddr, char *buf, size_t n) {
   size_t i;
@@ -137,6 +155,12 @@ putnbuf(char *uaddr, char *buf, size_t n) {
   return true;
 }
 
+/*
+  get a string from user address
+  return -1 when visit invlaid memory
+  of return the length of string
+  cut the string when its length greater than n
+*/
 static int
 getnstr(char *uaddr, char *buf, size_t n) {
   size_t i;
@@ -157,7 +181,7 @@ getnstr(char *uaddr, char *buf, size_t n) {
 void exit_print(int status) {
   struct thread *cur = thread_current();
   lock_acquire(&file_lock);
-  process_clear();
+  process_clear_file();
   lock_release(&file_lock);
   printf ("%s: exit(%d)\n", cur->name, status);
   cur->exit_status = status;
@@ -318,7 +342,7 @@ static uint32_t sys_read() {
       else {
         uint32_t rd = 0, tmp, ad;
         while (rd < n) {
-          tmp = (n - rd) > BUFSIZE ? BUFSIZE : (n - rd);
+          tmp = Min(n - rd, BUFSIZE);
           
           
           ad = file_read(f, buf, tmp);
@@ -355,7 +379,7 @@ static uint32_t sys_write() {
   if (fd == 1) {
     uint32_t wt = 0, tmp;
     while(wt < n) {
-      tmp = (n - wt) > BUFSIZE ? BUFSIZE : n - wt;
+      tmp = Min(n - wt, BUFSIZE);
       
       if (!getnbuf(s, buf, tmp)) {
         res_for_bad_memory = 1;
@@ -377,7 +401,7 @@ static uint32_t sys_write() {
       lock_acquire(&file_lock);
       uint32_t wt = 0, tmp, ad;
       while(wt < n) {
-        tmp = (n - wt) > BUFSIZE ? BUFSIZE : n - wt;
+        tmp = Min(n - wt, BUFSIZE);
         if (!getnbuf(s, buf, tmp)) {
           res_for_bad_memory = 1;
           break;
