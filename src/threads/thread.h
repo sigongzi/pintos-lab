@@ -125,6 +125,15 @@ struct thread
    struct file *load_file; /* the file loaded. It denies to be written before the process ends */
 #endif
 
+#ifdef VM
+   struct lock pgtbl_lock; /* lock for page table */
+   
+   void *sp_top; 
+   void *old_top;
+
+   struct list mmap_list;
+
+#endif
    /* Owned by thread.c. */
    unsigned magic; /**< Detects stack overflow. */
 };

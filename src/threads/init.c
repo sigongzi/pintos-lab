@@ -37,6 +37,9 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
+#ifdef VM
+#include "vm/page.h"
+#endif
 
 /** Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
@@ -103,6 +106,7 @@ pintos_init (void)
   malloc_init ();
   paging_init ();
 
+
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
@@ -131,6 +135,9 @@ pintos_init (void)
   filesys_init (format_filesys);
 #endif
 
+#ifdef VM
+  page_init();
+#endif
   printf ("Boot complete.\n");
   
   if (*argv != NULL) {

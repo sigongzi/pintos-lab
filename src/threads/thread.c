@@ -685,6 +685,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->donation_state = 0;
   list_init(&t->donation_list);
   t->recent_cpu = 0;
+
+
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

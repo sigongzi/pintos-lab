@@ -20,6 +20,8 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/pte.h"
+#include "vm/page.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -29,6 +31,8 @@ static bool load_argument_to_stack
 static struct thread* find_child_thread(tid_t tid);
 static void close_fd(file_descriptor *fd);
 static file_descriptor* find_fd(int fd);
+static void remove_mmap(mmap_descriptor* md);
+static mmap_descriptor* find_mmap(struct thread *t, int mapid);
 
 
 /*
@@ -133,7 +137,50 @@ static file_descriptor* find_fd(int fd) {
     } 
   return fd_save;
 }
-
+/*
+  helper function in process.c
+  remove mmap_descriptor structure
+*/
+static void remove_mmap(mmap_descriptor* md) {
+  struct thread *t = thread_current();
+  void *addr;
+  uint32_t *pte;
+  lock_acquire(&frame_hash_lock);
+  lock_acquire(&t->pgtbl_lock);
+  for (addr = md->start ; addr < pg_round_up(md->end) ; addr += PGSIZE) {
+    pte = lookup_page(t->pagedir, addr, 0);
+    ASSERT(pte != NULL);
+    if (((*pte) & PTE_P) && ((*pte) & PTE_D)) {
+      process_unload_mmap(thread_current(), md->mapid, addr, addr);
+    }
+    if ((*pte) & PTE_P) {
+      clear_content(pte);
+    }
+    *pte = 0;
+  }
+  lock_release(&t->pgtbl_lock);
+  lock_release(&frame_hash_lock);
+  file_close(md->f);
+  list_remove(&md->elem);
+  free(md);
+}
+/*
+  helper function in process.c
+  find mmap_descriptor structure
+*/
+static mmap_descriptor* find_mmap(struct thread *t, int mapid) {
+  mmap_descriptor *mmap_save = NULL;
+  struct list_elem *e;
+  for (e = list_begin(&t->mmap_list) ; e != list_end(&t->mmap_list); 
+    e = list_next(e)) {
+      mmap_descriptor *mmap_ano = list_entry(e, mmap_descriptor, elem);
+      if (mmap_ano->mapid == mapid) {
+        mmap_save = mmap_ano;
+        break;
+      }
+    } 
+  return mmap_save;
+}
 /*
   interface for syscall.c
   For OPEN syscall to add file descriptor in process
@@ -198,7 +245,105 @@ process_clear_file() {
     file_allow_write(cur->load_file);
     file_close(cur->load_file);
   }
-  
+}
+/*
+  interface for syscall.c
+*/
+
+int process_add_mmap(struct file *f, void *st, void *ed) {
+  mmap_descriptor *mmap_save = calloc(1, sizeof(mmap_descriptor));
+  if (mmap_save == NULL) {
+    return -1;
+  }
+  mmap_save->start = st;
+  mmap_save->end = ed;
+  mmap_save->f = f;
+  int alloc_mapid = 2;
+
+  struct list_elem *e;
+  struct thread *cur = thread_current();
+  for (e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list);
+    e = list_next(e)) {
+      mmap_descriptor *mmap_ano = list_entry(e, mmap_descriptor, elem);
+      if(mmap_ano->mapid == alloc_mapid) ++alloc_mapid;
+      else {
+        break;
+      }
+    }
+  mmap_save->mapid = alloc_mapid;
+  list_insert(e, &mmap_save->elem);
+  return alloc_mapid;
+}
+
+
+/*
+  interface for syscall.c
+*/
+void process_remove_mmap(mapid_t mapid) {
+  mmap_descriptor *md = find_mmap(thread_current(), mapid);
+  if (md == NULL) return;
+  remove_mmap(md);
+}
+
+
+/*
+  interface for syscall.c
+*/
+
+void process_clear_mmap() {
+  struct list_elem *e;
+  struct thread *cur = thread_current();
+  for (e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list);
+    ) {
+      mmap_descriptor *mmap_ano = list_entry(e, mmap_descriptor, elem);
+      e = list_next(e);
+      remove_mmap(mmap_ano);
+    }
+}
+/*
+  interface for page.c
+*/
+
+int process_in_mmap(void *vaddr) {
+  struct list_elem *e;
+  struct thread *cur = thread_current();
+  for (e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list);
+    e = list_next(e)) {
+      mmap_descriptor *mmap_ano = list_entry(e, mmap_descriptor, elem);
+      if ((uint32_t)vaddr >= (uint32_t)mmap_ano->start && (uint32_t)vaddr <= (uint32_t)mmap_ano->end) {
+        return mmap_ano->mapid;
+      }
+    }
+  return -1;
+}
+/*
+  interface for page.c
+*/
+void process_load_mmap(mapid_t mapid, void *vaddr, void *target) {
+  mmap_descriptor *mmap_save = find_mmap(thread_current(), mapid);
+  off_t offset = vaddr - mmap_save->start;
+  uint32_t load_byte 
+    = (mmap_save->end - vaddr + 1) < PGSIZE ? (mmap_save->end - vaddr + 1) : PGSIZE;
+  uint32_t zero_byte = PGSIZE - load_byte;
+  lock_acquire(&file_lock);
+  file_read_at(mmap_save->f, target, load_byte, offset);
+  lock_release(&file_lock);
+  if (zero_byte) {
+    memset(target + load_byte, 0, zero_byte);
+  }
+}
+
+/*
+  interface for page.c
+*/
+void process_unload_mmap(struct thread *t, mapid_t mapid, void *vaddr, void *src) {
+  mmap_descriptor *mmap_save = find_mmap(t, mapid);
+  off_t offset = vaddr - mmap_save->start;
+  uint32_t load_byte 
+    = (mmap_save->end - vaddr + 1) < PGSIZE ? (mmap_save->end - vaddr + 1) : PGSIZE;
+  lock_acquire(&file_lock);
+  file_write_at(mmap_save->f, src, load_byte, offset);
+  lock_release(&file_lock);
 }
 
 /** Starts a new thread running a user program loaded from
@@ -262,6 +407,9 @@ start_process (void *file_name_)
   cur->exit_status = 0;
   list_init(&cur->child_list);
   list_init(&cur->file_list);
+  list_init(&cur->mmap_list);
+  lock_init(&cur->pgtbl_lock);
+  cur->sp_top = cur->old_top = PHYS_BASE;
   cur->parent = arg->parent;
   list_insert(list_begin(&cur->parent->child_list), &cur->as_child);
   sema_init(&cur->wait_child_load, 0);
@@ -347,9 +495,11 @@ process_exit (void)
          directory before destroying the process's page
          directory, or our active page directory will be one
          that's been freed (and cleared). */
+      lock_acquire(&frame_hash_lock);
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+      lock_release(&frame_hash_lock);
     }
   sema_down(&cur->parent_sema);
   struct list_elem *e;
@@ -649,9 +799,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
+      uint32_t flags = PAL_USER;
 
+      #ifdef VM
+      flags = 0;
+      #endif
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      uint8_t *kpage = palloc_get_page (flags);
       if (kpage == NULL)
         return false;
 
@@ -664,12 +818,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
+      #ifndef VM
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
         }
+      #else
 
+      
+      if (!install_lazy_page(kpage, upage, writable, page_zero_bytes == PGSIZE) ) {
+        return false;
+      }
+
+      palloc_free_page(kpage);
+      #endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -683,9 +846,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
+  
   bool success = false;
 
+#ifndef VM
+  uint8_t *kpage;
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -695,6 +860,12 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+#else
+
+  *esp = PHYS_BASE;
+  success = true;
+  
+#endif  
   return success;
 }
 

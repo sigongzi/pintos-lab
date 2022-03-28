@@ -1,0 +1,27 @@
+{
+    "files.associations": {
+        "interrupt.h": "c",
+        "vaddr.h": "c",
+        "stdbool.h": "c",
+        "stdint.h": "c",
+        "cstdint": "c",
+        "stdint-gcc.h": "c",
+        "*.tcc": "c",
+        "*.inc": "c",
+        "exception": "c",
+        "fstream": "c",
+        "iosfwd": "c",
+        "new": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "streambuf": "c",
+        "memory_resource": "c",
+        "page.h": "c",
+        "tests.h": "c",
+        "main.h": "c",
+        "palloc.h": "c",
+        "pagedir.h": "c",
+        "process.h": "c",
+        "frame.h": "c"
+    }
+}

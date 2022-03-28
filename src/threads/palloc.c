@@ -36,6 +36,7 @@ struct pool
 /** Two pools: one for kernel data, one for user pages. */
 static struct pool kernel_pool, user_pool;
 
+static int kernel_cnt, user_cnt;
 static void init_pool (struct pool *, void *base, size_t page_cnt,
                        const char *name);
 static bool page_from_pool (const struct pool *, void *page);
@@ -54,7 +55,8 @@ palloc_init (size_t user_page_limit)
   if (user_pages > user_page_limit)
     user_pages = user_page_limit;
   kernel_pages = free_pages - user_pages;
-
+  kernel_cnt = kernel_pages;
+  user_cnt = user_pages;
   /* Give half of memory to kernel, half to user. */
   init_pool (&kernel_pool, free_start, kernel_pages, "kernel pool");
   init_pool (&user_pool, free_start + kernel_pages * PGSIZE,
@@ -73,7 +75,10 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
   struct pool *pool = flags & PAL_USER ? &user_pool : &kernel_pool;
   void *pages;
   size_t page_idx;
-
+  if (pool == &kernel_pool) {
+    kernel_cnt -= page_cnt;
+    //printf("now kernel page is %d\n", kernel_cnt);
+  }
   if (page_cnt == 0)
     return NULL;
 
@@ -88,6 +93,10 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
 
   if (pages != NULL) 
     {
+      if (pool == &user_pool) {
+        user_cnt -= page_cnt;
+        //printf("user page decreases to %d\n", user_cnt);
+      }
       if (flags & PAL_ZERO)
         memset (pages, 0, PGSIZE * page_cnt);
     }
@@ -120,6 +129,7 @@ palloc_free_multiple (void *pages, size_t page_cnt)
   struct pool *pool;
   size_t page_idx;
 
+  
   ASSERT (pg_ofs (pages) == 0);
   if (pages == NULL || page_cnt == 0)
     return;
@@ -130,7 +140,14 @@ palloc_free_multiple (void *pages, size_t page_cnt)
     pool = &user_pool;
   else
     NOT_REACHED ();
-
+  if (pool == &kernel_pool) {
+    kernel_cnt += page_cnt;
+    //printf("now kernel cnt is %d\n", kernel_cnt);
+  }
+  else {
+    user_cnt += page_cnt;
+    //printf("user page increases to %d\n", user_cnt);
+  }
   page_idx = pg_no (pages) - pg_no (pool->base);
 
 #ifndef NDEBUG

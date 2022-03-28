@@ -29,11 +29,15 @@ FirstName LastName <email@domain.example>
 
 
 
+SECTOR_NUMBER (20bits) ZERO FILE BLOCK VALID PTE_U PTE_W PTE_P = 0 
+
+
+
 >A3: How does your code coordinate accessed and dirty bits between
 >kernel and user virtual addresses that alias a single frame, or
 >alternatively how do you avoid the issue?
 
-
+use the pagetable itself
 
 #### SYNCHRONIZATION
 
@@ -42,12 +46,20 @@ FirstName LastName <email@domain.example>
 
 
 
+check_valid lock its own pagetable (frame table may change it)
+
+swap_page lock the frame data structure and the poor thread pagetable lock
+
+
+
+
+
 #### RATIONALE
 
 >A5: Why did you choose the data structure(s) that you did for
 >representing virtual-to-physical mappings?
 
-
+the page table is a radix tree itself, an elegent datastructure
 
 ## Paging To And From Disk
 
@@ -62,13 +74,13 @@ FirstName LastName <email@domain.example>
 >B2: When a frame is required but none is free, some frame must be
 >evicted.  Describe your code for choosing a frame to evict.
 
-
+record access bit, start from a recorded place, change access to zero,  when a page access is zero and dirty is one, swap it
 
 >B3: When a process P obtains a frame that was previously used by a
 >process Q, how do you adjust the page table (and any other data
 >structures) to reflect the frame Q no longer has?
 
-
+change PTE_P to zero and swap to block
 
 #### SYNCHRONIZATION
 
@@ -77,19 +89,25 @@ FirstName LastName <email@domain.example>
 >textbook for an explanation of the necessary conditions for
 >deadlock.)
 
-
+lock orderly
 
 >B6: A page fault in process P can cause another process Q's frame
 >to be evicted.  How do you ensure that Q cannot access or modify
 >the page during the eviction process?  How do you avoid a race
 >between P evicting Q's frame and Q faulting the page back in?
 
+change PTE_P = 0
 
+lock Q page table
 
 >B7: Suppose a page fault in process P causes a page to be read from
 >the file system or swap.  How do you ensure that a second process Q
 >cannot interfere by e.g. attempting to evict the frame while it is
 >still being read in?
+
+
+
+lock the frame table globally
 
 
 
@@ -101,6 +119,12 @@ FirstName LastName <email@domain.example>
 
 
 
+use page faults to bring in pages
+
+invalid virtual addresses are unrecoverable 
+
+
+
 #### RATIONALE
 
 >B9: A single lock for the whole VM system would make
@@ -109,3 +133,13 @@ FirstName LastName <email@domain.example>
 >possibility for deadlock but allows for high parallelism.  Explain
 >where your design falls along this continuum and why you chose to
 >design it this way.
+
+
+
+use lock for each page_table
+
+global frame_table and slot_table
+
+global data structure must protect by a lock
+
+too many fine-grained locks will increase its complexity

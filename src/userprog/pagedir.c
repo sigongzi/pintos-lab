@@ -5,6 +5,10 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
+#include "threads/thread.h"
+#include "vm/page.h"
+
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -33,18 +37,22 @@ pagedir_destroy (uint32_t *pd)
     return;
 
   ASSERT (pd != init_page_dir);
+  struct thread *cur = thread_current();
+
   for (pde = pd; pde < pd + pd_no (PHYS_BASE); pde++)
     if (*pde & PTE_P) 
       {
         uint32_t *pt = pde_get_pt (*pde);
         uint32_t *pte;
         
-        for (pte = pt; pte < pt + PGSIZE / sizeof *pte; pte++)
-          if (*pte & PTE_P) 
-            palloc_free_page (pte_get_page (*pte));
+        for (pte = pt; pte < pt + PGSIZE / sizeof *pte; pte++) {
+          clear_content(pte);
+          *pte = 0;
+        }
         palloc_free_page (pt);
       }
   palloc_free_page (pd);
+
 }
 
 /** Returns the address of the page table entry for virtual
@@ -53,7 +61,7 @@ pagedir_destroy (uint32_t *pd)
    on CREATE.  If CREATE is true, then a new page table is
    created and a pointer into it is returned.  Otherwise, a null
    pointer is returned. */
-static uint32_t *
+uint32_t *
 lookup_page (uint32_t *pd, const void *vaddr, bool create)
 {
   uint32_t *pt, *pde;

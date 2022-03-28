@@ -22,7 +22,7 @@ FirstName LastName <email@domain.example>
 >invalid virtual address should cause the stack to be extended into
 >the page that faulted.
 
-
+save the allocated stack size in thread and if the PTE is invalid but is away from allocated stack size reasonable bytes long
 
 ## Memory Mapped Files
 
@@ -38,10 +38,18 @@ FirstName LastName <email@domain.example>
 >memory subsystem.  Explain how the page fault and eviction
 >processes differ between swap pages and other pages.
 
+mmap_descriptor {
 
+​	mmap_id
+
+​	file_descriptor *
+
+}
 
 >B3: Explain how you determine whether a new file mapping overlaps
 >any existing segment.
+
+check in mmap list
 
 
 
@@ -53,3 +61,5 @@ FirstName LastName <email@domain.example>
 >that much of their implementation can be shared.  Explain why your
 >implementation either does or does not share much of the code for
 >the two situations.
+
+the executable code is in swap slot

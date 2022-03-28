@@ -9,6 +9,7 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "filesys/filesys.h"
+#include "vm/page.h"
 #include "devices/shutdown.h"
 #include "devices/input.h"
 
@@ -27,6 +28,8 @@ static uint32_t sys_write(void);
 static uint32_t sys_seek(void);
 static uint32_t sys_tell(void);
 static uint32_t sys_close(void);
+static uint32_t sys_mmap(void);
+static uint32_t sys_munmap(void);
 
 static int
 get_user (const uint8_t *uaddr);
@@ -65,6 +68,9 @@ static uint32_t (*syscalls[])(void) = {
   [SYS_SEEK] = sys_seek,
   [SYS_TELL] = sys_tell,
   [SYS_CLOSE] = sys_close,
+  /* system call for lab3 */
+  [SYS_MMAP] = sys_mmap,
+  [SYS_MUNMAP] = sys_munmap,
 };
 
 /* Reads a byte at user virtual address UADDR.
@@ -117,7 +123,7 @@ get_word(uint8_t *uaddr, uint32_t *arg) {
 */
 static bool
 get_arg(int ord, uint32_t *arg) {
-  if (!get_word(user_stack + ord * 4, arg)) return false;
+  if (!get_word(thread_current()->sp_top + ord * 4, arg)) return false;
   return true;
 }
 
@@ -180,9 +186,11 @@ getnstr(char *uaddr, char *buf, size_t n) {
 
 void exit_print(int status) {
   struct thread *cur = thread_current();
+  
   lock_acquire(&file_lock);
   process_clear_file();
   lock_release(&file_lock);
+  process_clear_mmap();
   printf ("%s: exit(%d)\n", cur->name, status);
   cur->exit_status = status;
   thread_exit();
@@ -207,6 +215,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if (syscall_num < NELEM(syscalls) && syscalls[syscall_num]) {
     user_stack = f->esp;
+    thread_current()->sp_top = f->esp;
     f->eax = syscalls[syscall_num]();
   } else {
     printf("unknown sys call %x\n", syscall_num);
@@ -454,5 +463,46 @@ static uint32_t sys_close() {
   res = process_close_file(fd);
   lock_release(&file_lock);
   if (!res) return -1;
+  return 0;
+}
+
+static uint32_t sys_mmap() {
+  uint32_t fd;
+  uint32_t addr;
+  struct file *f;
+  void *st, *ed;
+  int mapid;
+  if(!get_arg(1, &fd) || !get_arg(2, &addr)) exit_print(-1);
+
+  if (fd <= 1) return -1;
+  if (addr == 0 || (addr & PGMASK)) return -1;
+
+  f = process_find_file(fd);
+  if (f == NULL) return -1;
+
+  st = (void *)addr;
+  ed = (void *)(addr + file_length(f) - 1);
+
+  if (!is_vm_range_unused(st, pg_round_up(ed))) return -1;
+
+  lock_acquire(&file_lock);
+  f = file_reopen(f);
+  lock_release(&file_lock);
+
+  if(f == NULL) return -1;
+
+  mapid = process_add_mmap(f, st, ed);
+  if (mapid != -1) {
+    map_vm_range(st, ed, mapid);
+  }
+  return mapid;
+}
+
+static uint32_t sys_munmap() {
+  uint32_t mapid;
+  if (!get_arg(1, &mapid)) exit_print(-1);
+
+  process_remove_mmap(mapid);
+
   return 0;
 }
