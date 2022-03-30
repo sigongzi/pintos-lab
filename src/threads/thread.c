@@ -775,6 +775,7 @@ thread_schedule_tail (struct thread *prev)
       #ifdef USERPROG
         /* if it has father, wait its father to free its memory */
         if (prev->parent != NULL) {
+          sema_up(&prev->end_process);
           return;
         }
       #endif

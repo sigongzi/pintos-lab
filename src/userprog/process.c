@@ -215,7 +215,7 @@ process_execute (const char *file_name)
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
+  fn_copy = palloc_get_page (PAL_ASSERT | PAL_ZERO);
   if (fn_copy == NULL)
     return TID_ERROR;
   
@@ -367,7 +367,7 @@ process_exit (void)
       }
     }
   sema_up(&cur->parent_sema);
-  sema_up(&cur->end_process);
+  
 }
 
 /** Sets up the CPU for running user code in the current

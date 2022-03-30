@@ -123,6 +123,7 @@ struct thread
    struct thread *parent; /* record parent, if parent is NULL, it can delete itself. 
    Or it must be recycled when its parent exits*/
    struct file *load_file; /* the file loaded. It denies to be written before the process ends */
+   void *sp_top;
 #endif
 
    /* Owned by thread.c. */

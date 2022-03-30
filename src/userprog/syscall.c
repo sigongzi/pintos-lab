@@ -45,7 +45,6 @@ static const uint32_t FILENAME_LENGTH = 15;
 
 
 
-static void *user_stack;
 
 
 struct lock file_lock;
@@ -117,7 +116,7 @@ get_word(uint8_t *uaddr, uint32_t *arg) {
 */
 static bool
 get_arg(int ord, uint32_t *arg) {
-  if (!get_word(user_stack + ord * 4, arg)) return false;
+  if (!get_word(thread_current()->sp_top + ord * 4, arg)) return false;
   return true;
 }
 
@@ -206,7 +205,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   }
 
   if (syscall_num < NELEM(syscalls) && syscalls[syscall_num]) {
-    user_stack = f->esp;
+    thread_current()->sp_top = f->esp;
     f->eax = syscalls[syscall_num]();
   } else {
     printf("unknown sys call %x\n", syscall_num);
@@ -246,6 +245,7 @@ static uint32_t sys_exec() {
   if((uint32_t)n == BUFSIZE) return -1;
   lock_acquire(&file_lock);
   tid_t res = process_execute(file_name);
+  
   lock_release(&file_lock);
   return res;
 }
