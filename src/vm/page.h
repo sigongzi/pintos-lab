@@ -7,6 +7,7 @@
 #include "threads/thread.h"
 
 #define SECTOR_SHIFT 9
+#define SECTOR_MASK 0xfffff
 /* do not use 0x40 used by swap function */
 #define PAGE_FILE 0x20
 #define PAGE_SWAP 0x10

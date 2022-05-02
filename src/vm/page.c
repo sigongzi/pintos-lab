@@ -16,8 +16,10 @@ static void make_pte_file(uint32_t *, int32_t);
 static void *get_memory_addr(uint32_t *);
 static uint32_t get_slot_idx(uint32_t *);
 static int get_mapid(uint32_t *);
+static struct lock page_lock;
 
 static void make_pte_slot(uint32_t *pte, uint32_t sector_start) {
+    *pte = (*pte) & (FLAG_MASK ^ PTE_P);
     *pte = (*pte) | PAGE_LOAD;
     *pte = (*pte) | PAGE_SWAP;
     *pte = (*pte) | (sector_start << SECTOR_SHIFT);
@@ -28,6 +30,7 @@ static void make_pte_memory(uint32_t *pte, uintptr_t addr) {
 }
 
 static void make_pte_file(uint32_t *pte, int32_t mapid) {
+    *pte = (*pte) & (FLAG_MASK ^ PTE_P);
     *pte = (*pte) | PAGE_LOAD;
     *pte = (*pte) | PAGE_FILE;
     *pte = (*pte) | (mapid << SECTOR_SHIFT);
@@ -37,11 +40,11 @@ static void *get_memory_addr(uint32_t *pte) {
 }
 
 static uint32_t get_slot_idx(uint32_t *pte) {
-    return (*pte) >> SECTOR_SHIFT;
+    return ((*pte) >> SECTOR_SHIFT) & SECTOR_MASK;
 }
 
 static int get_mapid(uint32_t *pte) {
-    return (*pte) >> SECTOR_SHIFT;
+    return ((*pte) >> SECTOR_SHIFT) & SECTOR_MASK;
 }
 
 void page_init() {
@@ -49,7 +52,7 @@ void page_init() {
     frame_init();
     
     zero_page = palloc_get_page(PAL_ZERO | PAL_ASSERT);
-
+    lock_init(&page_lock);
 
 }
 
@@ -79,6 +82,7 @@ bool install_lazy_page(void *kaddr, void *uaddr, bool writable, bool zero) {
 }
 
 bool check_valid(void *addr, struct intr_frame *f) {
+    lock_acquire(&page_lock);
     struct thread *t = thread_current();
     uint32_t *pte;
     void *kpage;
@@ -88,12 +92,16 @@ bool check_valid(void *addr, struct intr_frame *f) {
     lock_release(&t->pgtbl_lock);
 
     bool not_present = (f->error_code & PF_P) == 0;
-    
+    //printf("page fault for %x for thread %s with id %d\n", addr, t->name, t->tid);
     //printf("user command: %x\n", (uint32_t)f->eip);
     if ((uint32_t)f->eip < (uint32_t)PHYS_BASE) {
         if (f->esp < t->sp_top) {
-            if ((t->sp_top - f->esp) > STACK_MAX_GAP) return false;
+            if ((t->sp_top - f->esp) > STACK_MAX_GAP) {
+                lock_release(&page_lock);
+                return false;
+            }
         }
+        
         t->sp_top = f->esp;
         if ((uint32_t)t->sp_top < (uint32_t)t->old_top) {
             t->old_top = t->sp_top;
@@ -102,7 +110,8 @@ bool check_valid(void *addr, struct intr_frame *f) {
 
     if ((uint32_t)addr >= (uint32_t)t->old_top && 
         (uint32_t)addr < (uint32_t)(t->sp_top - STACK_ESP)) {
-        return false;
+            lock_release(&page_lock);
+            return false;
     }
     if (pte == NULL || (not_present && (!((*pte) & PAGE_LOAD))) ) {
         if ((uint32_t)addr >= (uint32_t)(t->sp_top - STACK_ESP)) {
@@ -110,7 +119,8 @@ bool check_valid(void *addr, struct intr_frame *f) {
             *pte = PTE_U | PTE_W | PTE_P;
             kpage = frame_get_page(alloc_addr);
             make_pte_memory(pte, vtop(kpage));
-            t->sp_top = alloc_addr;
+            //t->sp_top = alloc_addr;
+            lock_release(&page_lock);
             return true;
         } 
         return false;
@@ -128,19 +138,25 @@ bool check_valid(void *addr, struct intr_frame *f) {
             *pte = (*pte) & FLAG_MASK;
             kpage = frame_get_page(alloc_addr);
             make_pte_memory(pte, vtop(kpage));
+            lock_release(&page_lock);
             return true;
         }
+        lock_release(&page_lock);
         return false;
     }
     
     if((*pte) & PAGE_SWAP) {
+        
         kpage = frame_get_page(alloc_addr);
+        //printf("page fault for %x for thread %s with id %d in load from %d sector \n", 
+        //    addr, t->name, t->tid, get_slot_idx(pte));
         load_from_slot(pte, kpage);
     }
     else if((*pte) & PAGE_FILE) {
         kpage = frame_get_page(alloc_addr);
         load_from_file(pte, alloc_addr, kpage);
     }
+    lock_release(&page_lock);
     return true;
 }
 void clear_content(uint32_t *pte) {
@@ -158,16 +174,17 @@ void clear_content(uint32_t *pte) {
 void swap_to_disk(struct thread *t, uint32_t *pagedir, void *vaddr) {
     uint32_t *pte = lookup_page(pagedir, vaddr, 0);
     void *kaddr = get_memory_addr(pte);
+    ASSERT((*pte) & PTE_P);
     int32_t mapid = process_in_mmap(vaddr);
     if (mapid != -1) {
         // printf("user mmap?\n");
         process_unload_mmap(t, mapid, vaddr, kaddr);
-        *pte = (*pte) & (FLAG_MASK ^ PTE_P);
+        
         make_pte_file(pte, mapid);
     }
     else {
         uint32_t sector_start = save_page_to_block(kaddr);
-        *pte = (*pte) & (FLAG_MASK ^ PTE_P);
+        ASSERT(sector_start != -1);
         make_pte_slot(pte, sector_start);
     }
 }
