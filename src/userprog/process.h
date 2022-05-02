@@ -49,7 +49,7 @@ typedef struct {
     mapid_t mapid; /* file descriptor for process */
     struct file *f; /* file pointer in file system */
     struct list_elem elem; /* element in file_list per process */
-    void *start, *end;
+    void *start, *end; /* virtual address range */
 }mmap_descriptor;
 
 #endif /**< userprog/process.h */
