@@ -36,6 +36,11 @@
         "malloc.h": "c",
         "tss.h": "c",
         "atomic": "c",
-        "pagedir.h": "c"
+        "pagedir.h": "c",
+        "filesys.h": "c",
+        "block.h": "c",
+        "cache.h": "c",
+        "off_t.h": "c",
+        "directory.h": "c"
     }
 }

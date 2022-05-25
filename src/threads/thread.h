@@ -7,6 +7,7 @@
 #include "threads/synch.h"
 #include "threads/fpreal.h"
 #include "filesys/file.h"
+#include "filesys/directory.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -133,6 +134,10 @@ struct thread
 
    struct list mmap_list;
 
+#endif
+
+#ifdef FILESYS
+   struct dir *dir;
 #endif
    /* Owned by thread.c. */
    unsigned magic; /**< Detects stack overflow. */

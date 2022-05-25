@@ -30,6 +30,12 @@ static uint32_t sys_tell(void);
 static uint32_t sys_close(void);
 static uint32_t sys_mmap(void);
 static uint32_t sys_munmap(void);
+static uint32_t sys_chdir(void);
+static uint32_t sys_mkdir(void);
+static uint32_t sys_readdir(void);
+static uint32_t sys_isdir(void);
+static uint32_t sys_inumber(void);
+
 
 static int
 get_user (const uint8_t *uaddr);
@@ -38,8 +44,8 @@ put_user (uint8_t *udst, uint8_t byte);
 static bool get_word(uint8_t *uaddr, uint32_t *arg);
 static bool get_arg(int ord, uint32_t *arg);
 static bool getnbuf(char *uaddr, char *buf, size_t n);
-static int getnstr(char *uaddr, char *buf, size_t n);
-
+static bool
+check_string(char *uaddr);
 static inline uint32_t Min(uint32_t a, uint32_t b) {
   return a < b ? a : b;
 }
@@ -71,6 +77,11 @@ static uint32_t (*syscalls[])(void) = {
   /* system call for lab3 */
   [SYS_MMAP] = sys_mmap,
   [SYS_MUNMAP] = sys_munmap,
+  [SYS_CHDIR] = sys_chdir,
+  [SYS_MKDIR] = sys_mkdir,
+  [SYS_READDIR] = sys_readdir,
+  [SYS_ISDIR] = sys_isdir,
+  [SYS_INUMBER] = sys_inumber,
 };
 
 /* Reads a byte at user virtual address UADDR.
@@ -167,21 +178,19 @@ putnbuf(char *uaddr, char *buf, size_t n) {
   of return the length of string
   cut the string when its length greater than n
 */
-static int
-getnstr(char *uaddr, char *buf, size_t n) {
-  size_t i;
+static bool
+check_string(char *uaddr) {
+  size_t i = 0;
   int tmp;
-  for(i = 0 ; i < n ; ++i) {
+  while(true) {
     if((tmp = get_user((uint8_t *)uaddr)) == -1) {
-      return -1;
+      return false;
     }
-    *buf = (tmp & 0xff);
-    if (*buf == '\0') return i;
-    ++buf;
+    if ((char)tmp == '\0') return true;
     ++uaddr;
   }
 
-  return n;
+  return false;
 }
 
 void exit_print(int status) {
@@ -243,18 +252,13 @@ static uint32_t sys_exit() {
 
 static uint32_t sys_exec() {
   uint32_t addr;
-  char file_name[BUFSIZE];
-  int n;
   if (!get_arg(1, &addr)) {
     exit_print(-1);
   }
   char *s = (char *)addr;
-  if ((n = getnstr(s, file_name, BUFSIZE)) == -1) {
-    exit_print(-1);
-  }
-  if((uint32_t)n == BUFSIZE) return -1;
+  if (!check_string(s)) exit_print(-1);
   lock_acquire(&file_lock);
-  tid_t res = process_execute(file_name);
+  tid_t res = process_execute(s);
   lock_release(&file_lock);
   return res;
 }
@@ -266,43 +270,34 @@ static uint32_t sys_wait() {
 }
 
 static uint32_t sys_create() {
-  char file_name[FILENAME_LENGTH];
   uint32_t addr, init_size;
-  int n;
   bool res;
   if (!get_arg(1, &addr) || !get_arg(2, &init_size)) exit_print(-1);
-  if ((n = getnstr((char *)addr, file_name, FILENAME_LENGTH)) == -1) exit_print(-1);
-  if ((uint32_t)n == FILENAME_LENGTH) return 0;
+  if (!check_string((char *)addr)) exit_print(-1);
   lock_acquire(&file_lock);
-  res = filesys_create(file_name, init_size);
+  res = filesys_create((char *)addr, init_size);
   lock_release(&file_lock);
   return res;
 }
 
 static uint32_t sys_remove() {
-  char file_name[FILENAME_LENGTH];
   uint32_t addr;
-  int n;
   bool res;
   if(!get_arg(1, &addr)) exit_print(-1);
-  if ((n = getnstr((char *)addr, file_name, FILENAME_LENGTH)) == -1) exit_print(-1);
-  if ((uint32_t)n == FILENAME_LENGTH) return 0;
+  if (!check_string((char *)addr)) exit_print(-1);
   lock_acquire(&file_lock);
-  res = filesys_remove(file_name);
+  res = filesys_remove((char *)addr);
   lock_release(&file_lock);
   return res;
 }
 
 static uint32_t sys_open() {
-  char file_name[FILENAME_LENGTH];
-  int n;
   uint32_t addr;
   struct file *f;
   if (!get_arg(1, &addr)) exit_print(-1);
-  if ((n = getnstr((char *)addr, file_name, FILENAME_LENGTH)) == -1) exit_print(-1);
-  if ((uint32_t)n == FILENAME_LENGTH) return -1;
+  if(!check_string((char *)addr)) exit_print(-1);
   lock_acquire(&file_lock);
-  f = filesys_open(file_name);
+  f = filesys_open((char *)addr);
   lock_release(&file_lock);
 
   if(f == NULL) return -1;
@@ -505,4 +500,65 @@ static uint32_t sys_munmap() {
   process_remove_mmap(mapid);
 
   return 0;
+}
+
+static uint32_t sys_chdir() {
+  uint32_t addr;
+  if (!get_arg(1, &addr)) exit_print(-1);
+  if (!check_string((char *)addr)) exit_print(-1);
+  bool success = 0;
+  lock_acquire(&file_lock);
+  success = filesys_chdir((char *)addr);
+  lock_release(&file_lock);
+  return success;
+}
+
+static uint32_t sys_mkdir() {
+  uint32_t addr;
+  if (!get_arg(1, &addr)) exit_print(-1);
+  if (!check_string((char *)addr)) exit_print(-1);
+  bool success = 0;
+  lock_acquire(&file_lock);
+  success = filesys_mkdir((char *)addr);
+  lock_release(&file_lock);
+  return success;
+}
+
+static uint32_t sys_readdir() {
+  uint32_t fd;
+  uint32_t addr;
+  char file_name[FILENAME_LENGTH];
+  if(!get_arg(1, &fd) || !get_arg(2, &addr)) exit_print(-1);
+  struct file *f = process_find_file(fd);
+  if (f == NULL) return -1;
+  bool success = 0;
+  lock_acquire(&file_lock);
+  success = file_readdir(f, file_name);
+  lock_release(&file_lock);
+  if(!putnbuf((char *)addr, file_name, strlen(file_name) + 1)) exit_print(-1);
+  return success;
+}
+
+static uint32_t sys_isdir() {
+  uint32_t fd;
+  if(!get_arg(1, &fd)) exit_print(-1);
+  struct file *f = process_find_file(fd);
+  if (f == NULL) return -1;
+  uint32_t res;
+  lock_acquire(&file_lock);
+  res = file_isdir(f);
+  lock_release(&file_lock);
+  return res;
+}
+
+static uint32_t sys_inumber() {
+  uint32_t fd;
+  if(!get_arg(1, &fd)) exit_print(-1);
+  struct file *f = process_find_file(fd);
+  if(f == NULL) return -1;
+  uint32_t res;
+  lock_acquire(&file_lock);
+  res = file_inumber(f);
+  lock_acquire(&file_lock);
+  return res;
 }

@@ -122,7 +122,8 @@ bool check_valid(void *addr, struct intr_frame *f) {
             //t->sp_top = alloc_addr;
             lock_release(&page_lock);
             return true;
-        } 
+        }
+        lock_release(&page_lock); 
         return false;
     }
 

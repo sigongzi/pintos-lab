@@ -138,6 +138,7 @@ pintos_init (void)
 #ifdef VM
   page_init();
 #endif
+
   printf ("Boot complete.\n");
   
   if (*argv != NULL) {

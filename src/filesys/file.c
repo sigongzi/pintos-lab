@@ -2,6 +2,7 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/directory.h"
 
 
 
@@ -61,7 +62,11 @@ file_get_inode (struct file *file)
    Advances FILE's position by the number of bytes read. */
 off_t
 file_read (struct file *file, void *buffer, off_t size) 
-{
+{ 
+  // reject read for directory
+  if (inode_get_type(file->inode) != INODE_FILE) {
+    return 0;
+  }
   off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_read;
   return bytes_read;
@@ -88,6 +93,10 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs)
 off_t
 file_write (struct file *file, const void *buffer, off_t size) 
 {
+  // reject write for directory
+  if (inode_get_type(file->inode) != INODE_FILE) {
+    return 0;
+  }
   off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_written;
   return bytes_written;
@@ -159,4 +168,23 @@ file_tell (struct file *file)
 {
   ASSERT (file != NULL);
   return file->pos;
+}
+
+bool
+file_isdir(struct file *file) {
+  return inode_get_type(file) == INODE_DIR;
+}
+
+int
+file_inumber(struct file *file) {
+  return inode_get_inumber(file->inode);
+}
+
+bool
+file_readdir(struct file *file, char *name) {
+  struct dir *dir = dir_open(inode_reopen(file->inode));
+  if (dir == NULL) return false;
+  dir_readdir(dir, name);
+  dir_close(dir);
+  return true;
 }

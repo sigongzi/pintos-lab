@@ -96,6 +96,9 @@ void *frame_get_page(void *uaddr) {
                 }
                 *pte ^= PTE_A;
             }
+            else {
+                *pte |= PTE_D;
+            }
             lock_release(&fp->t->pgtbl_lock); 
         }
         

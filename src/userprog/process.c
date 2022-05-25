@@ -12,6 +12,7 @@
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/directory.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
@@ -422,7 +423,6 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-
   /* If load argument to user stack failed, quit */
   if (success) {
     success = load_argument_to_stack(arg, &if_.esp);
@@ -481,7 +481,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  
+  /** decrease the reference for the current directory */
+  dir_close(cur->dir);
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
