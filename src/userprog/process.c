@@ -412,6 +412,7 @@ start_process (void *file_name_)
   lock_init(&cur->pgtbl_lock);
   cur->sp_top = cur->old_top = PHYS_BASE;
   cur->parent = arg->parent;
+  cur->dir = NULL;
   list_insert(list_begin(&cur->parent->child_list), &cur->as_child);
   sema_init(&cur->wait_child_load, 0);
   sema_init(&cur->end_process, 0);
@@ -440,6 +441,8 @@ start_process (void *file_name_)
     thread_exit ();
   }
   /* notice parent process we have finished the load */ 
+
+  cur->dir = dir_open_root();
   sema_up(&cur->parent->wait_child_load);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in

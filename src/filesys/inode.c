@@ -66,9 +66,10 @@ byte_to_sector (const struct inode_disk *inode_disk, off_t pos)
 }
 /** extend the file length to a new length */
 static
-void extend_length(struct inode_disk *inode_disk, uint32_t new_length) {
+bool extend_length(struct inode_disk *inode_disk, uint32_t new_length) {
   
   uint32_t now_length = inode_disk->sector_cnt * BLOCK_SECTOR_SIZE;
+  bool success = 1;
   while (now_length < new_length) {
     
     uint32_t sub_layer = now_length / FIRST_SIZE;
@@ -81,7 +82,11 @@ void extend_length(struct inode_disk *inode_disk, uint32_t new_length) {
     
 
     block_sector_t start;
-    free_map_allocate(ALLOC_SECTOR, &start);
+
+    if (!free_map_allocate(ALLOC_SECTOR, &start)) {
+      success = 0;
+      goto fail;
+    }
     for (int i = 0 ; i < ALLOC_SECTOR ; ++i) {
       cache_set_zero(start + i);
     }
@@ -98,7 +103,8 @@ void extend_length(struct inode_disk *inode_disk, uint32_t new_length) {
   }
 
   inode_disk->length = new_length;
-
+  fail:
+  return success;
 }
 
 /** List of open inodes, so that opening a single inode twice
@@ -135,6 +141,7 @@ inode_create (block_sector_t sector, off_t length, enum inode_type type)
       disk_inode->length = 0;
       disk_inode->magic = INODE_MAGIC;
       disk_inode->type = type;
+      //printf("a file with type %d in sector %d", type, sector);
       disk_inode->entry_number = 0;
       extend_length(disk_inode, length);
       cache_write(sector, 0, disk_inode, BLOCK_SECTOR_SIZE);
@@ -160,8 +167,7 @@ inode_open (block_sector_t sector)
       inode = list_entry (e, struct inode, elem);
       if (inode->sector == sector) 
         {
-          inode_reopen (inode);
-          return inode; 
+          return inode_reopen (inode);
         }
     }
 
@@ -184,6 +190,7 @@ inode_open (block_sector_t sector)
 struct inode *
 inode_reopen (struct inode *inode)
 {
+  if (inode->removed) return NULL;
   if (inode != NULL)
     inode->open_cnt++;
   return inode;
@@ -218,7 +225,7 @@ inode_close (struct inode *inode)
           
           for (uint32_t i = 0 ; i < inode->data.sector_cnt; i += ALLOC_SECTOR) {
             block_sector_t s = byte_to_sector(&inode->data, i * BLOCK_SECTOR_SIZE);
-            free_map_release (s, 4);
+            free_map_release (s, ALLOC_SECTOR);
           }
           uint32_t upper = (inode->data.sector_cnt * BLOCK_SECTOR_SIZE + FIRST_SIZE - 1)/ FIRST_SIZE;
           for (uint32_t i = 0; i < upper ; ++i)  {
@@ -299,7 +306,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
 
   if (offset + size > inode->data.length) {
-    extend_length(&inode->data, offset + size);
+    if(!extend_length(&inode->data, offset + size)) {
+      return 0;
+    }
+    cache_write(inode->sector, 0, &inode->data, BLOCK_SECTOR_SIZE);
   }
   while (size > 0) 
     {
@@ -366,4 +376,8 @@ void inode_change_entry_number(struct inode *inode, int v) {
 
 uint32_t inode_get_entry_number(struct inode *inode) {
   return inode->data.entry_number;
+}
+
+bool inode_is_removed(struct inode *inode) {
+  return !inode->removed;
 }

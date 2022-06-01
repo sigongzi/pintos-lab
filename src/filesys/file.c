@@ -63,10 +63,7 @@ file_get_inode (struct file *file)
 off_t
 file_read (struct file *file, void *buffer, off_t size) 
 { 
-  // reject read for directory
-  if (inode_get_type(file->inode) != INODE_FILE) {
-    return 0;
-  }
+  
   off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_read;
   return bytes_read;
@@ -93,10 +90,7 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs)
 off_t
 file_write (struct file *file, const void *buffer, off_t size) 
 {
-  // reject write for directory
-  if (inode_get_type(file->inode) != INODE_FILE) {
-    return 0;
-  }
+
   off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_written;
   return bytes_written;
@@ -172,7 +166,8 @@ file_tell (struct file *file)
 
 bool
 file_isdir(struct file *file) {
-  return inode_get_type(file) == INODE_DIR;
+  if (file == NULL) return 0;
+  return inode_get_type(file->inode) == INODE_DIR;
 }
 
 int
@@ -183,8 +178,13 @@ file_inumber(struct file *file) {
 bool
 file_readdir(struct file *file, char *name) {
   struct dir *dir = dir_open(inode_reopen(file->inode));
+  
   if (dir == NULL) return false;
-  dir_readdir(dir, name);
+  dir_setpos(dir, file->pos);
+  memset(name, 0, NAME_MAX + 1);
+  bool success = dir_readdir(dir, name);
+  //printf("get subfile %s\n", name);
+  file->pos = dir_getpos(dir);
   dir_close(dir);
-  return true;
+  return success;
 }

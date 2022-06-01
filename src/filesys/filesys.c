@@ -105,7 +105,7 @@ filesys_open(const char *name)
   if (dir != NULL)
     dir_lookup(dir, file_name, &inode);
   dir_close(dir);
-
+  //printf("open file %s name, in sector %d\n", name, inode_get_inumber(inode));
   return file_open(inode);
 }
 

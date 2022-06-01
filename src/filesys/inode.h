@@ -26,5 +26,6 @@ off_t inode_length (const struct inode *);
 enum inode_type inode_get_type(const struct inode* );
 void inode_change_entry_number(struct inode *, int);
 uint32_t inode_get_entry_number(struct inode*);
+bool inode_is_removed(struct inode*);
 
 #endif /**< filesys/inode.h */

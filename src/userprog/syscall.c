@@ -338,7 +338,7 @@ static uint32_t sys_read() {
   else {
     
     f = process_find_file(fd);
-    if (f == NULL) n = -1;
+    if (f == NULL || file_isdir(f)) n = -1;
     else {
       
       lock_acquire(&file_lock);
@@ -400,6 +400,10 @@ static uint32_t sys_write() {
     f = process_find_file(fd);
     if(f == NULL) {
       n = 0;
+    }
+    else if(file_isdir(f)) {
+      //printf("file is a directory");
+      n = -1;
     }
     else {
       lock_acquire(&file_lock);
@@ -532,6 +536,7 @@ static uint32_t sys_readdir() {
   struct file *f = process_find_file(fd);
   if (f == NULL) return -1;
   bool success = 0;
+  memset(file_name, 0, sizeof(file_name));
   lock_acquire(&file_lock);
   success = file_readdir(f, file_name);
   lock_release(&file_lock);
@@ -559,6 +564,6 @@ static uint32_t sys_inumber() {
   uint32_t res;
   lock_acquire(&file_lock);
   res = file_inumber(f);
-  lock_acquire(&file_lock);
+  lock_release(&file_lock);
   return res;
 }

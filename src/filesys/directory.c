@@ -36,7 +36,7 @@ dir_create (block_sector_t sector, struct dir *parent_dir)
     e.inode_sector = sector;
     memset(e.name, 0, sizeof(e.name));
     e.name[0] = '.';e.name[1] = '\0';
-    e.name.in_use = 1;
+    e.in_use = 1;
     if(inode_write_at(inode, &e, sizeof(e), 0) != sizeof(e)) {
       return false;
     }
@@ -46,7 +46,7 @@ dir_create (block_sector_t sector, struct dir *parent_dir)
     if (parent_dir != NULL) {
       /** the parent directory of root is root */ 
       e.inode_sector = inode_get_inumber(parent_dir->inode);
-      e.name.in_use = 1;
+      e.in_use = 1;
 
     }
     if (inode_write_at(inode, &e, sizeof(e), sizeof(e)) != sizeof(e)) {
@@ -67,7 +67,7 @@ dir_open (struct inode *inode)
   if (inode != NULL && dir != NULL && inode_get_type(inode) == INODE_DIR)
     {
       dir->inode = inode;
-      dir->pos = 0;
+      dir->pos = 2 * sizeof(struct dir_entry);
       return dir;
     }
   else
@@ -126,16 +126,20 @@ lookup (const struct dir *dir, const char *name,
   
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-
+  //printf("want to find %s\n", name);
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-       ofs += sizeof e) 
-    if (e.in_use && !strcmp (name, e.name)) 
-      {
-        if (ep != NULL)
-          *ep = e;
-        if (ofsp != NULL)
-          *ofsp = ofs;
-        return true;
+       ofs += sizeof e) {
+        //printf("find sub file %s is in use ? %d\n", e.name, e.in_use);
+        //printf("cmp result %d\n", strcmp(name, e.name));
+        if (e.in_use && !strcmp (name, e.name)) 
+        {
+          //printf("this is directory for %s\n", name);
+          if (ep != NULL)
+            *ep = e;
+          if (ofsp != NULL)
+            *ofsp = ofs;
+          return true;
+        }
       }
   return false;
 }
@@ -152,8 +156,10 @@ dir_lookup (const struct dir *dir, const char *name,
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-
-  if (lookup (dir, name, &e, NULL))
+  if (strlen(name) == 0) {
+    *inode = inode_reopen (dir->inode);
+  }
+  else if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
     *inode = NULL;
@@ -202,7 +208,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
   success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-
+  //printf("add file %s in %d", name, inode_get_inumber(dir->inode));
   inode_change_entry_number(dir->inode, 1);
  done:
   return success;
@@ -255,13 +261,18 @@ dir_remove (struct dir *dir, const char *name)
 bool
 dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
+  if (dir->pos == 0) {
+    dir->pos = 2 * sizeof(struct dir_entry);
+  }
   struct dir_entry e;
-
+  //printf("the directory length is %d\n",inode_length(dir->inode));
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
+      //printf("[DEBUG]the directory position is %d\n", dir->pos);
       if (e.in_use)
         {
+          //printf("find a file %s\n", e.name);
           strlcpy (name, e.name, NAME_MAX + 1);
           return true;
         } 
@@ -275,13 +286,14 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 struct dir *dir_get_parent(const char *name) {
   uint32_t len = strlen(name);
   if (len == 0) return NULL;
-  char *end = name + len - 1;
+  char *end = name;
+  end = end + (len - 1);
   while (*end == '/' && end != name) --end;
   while (*end != '/' && end != name) --end;
   while (*end == '/' && end != name) --end;
-  if (*end != '/') ++end;
+  if (*(end + 1) == '/') ++end;
   struct dir *current_dir, *next_dir;
-  if (*name == '/') {
+  if (*name == '/' || thread_current()->dir == NULL) {
     current_dir = dir_open_root();
   }
   else {
@@ -292,7 +304,6 @@ struct dir *dir_get_parent(const char *name) {
   char file_name[NAME_MAX + 1];
   char *s = name, *t;
   struct dir_entry e;
-  off_t ofs;
   while (s != end) {
     while (*s == '/' && s != end) ++s;
     if(s == end) break;
@@ -306,9 +317,9 @@ struct dir *dir_get_parent(const char *name) {
       file_name[len] = *s;
       ++len;
     }
-    file_name[len + 1] = '\0';
+    file_name[len] = '\0';
     /* find dir entry */
-    if (!lookup(current_dir, file_name, &e, &ofs)) {
+    if (!lookup(current_dir, file_name, &e, NULL)) {
       goto fail;
     }
 
@@ -323,8 +334,16 @@ struct dir *dir_get_parent(const char *name) {
     current_dir = next_dir;
   }
   return current_dir;
-  
+
   fail:
   dir_close(current_dir);
   return NULL;
+}
+
+void dir_setpos(struct dir *dir, int pos) {
+  dir->pos = pos;
+}
+
+int dir_getpos(struct dir *dir) {
+  return dir->pos;
 }
