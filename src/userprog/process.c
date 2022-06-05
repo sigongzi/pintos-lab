@@ -246,6 +246,9 @@ process_clear_file() {
     file_allow_write(cur->load_file);
     file_close(cur->load_file);
   }
+  if(cur->dir) {
+    dir_close(cur->dir);
+  }
 }
 /*
   interface for syscall.c
@@ -474,7 +477,9 @@ process_wait (tid_t child_tid)
   sema_down(&ch->end_process);
   status = ch->exit_status;
   list_remove(&ch->as_child);
+
   palloc_free_page(ch);
+  
   return status;
 }
 
@@ -485,7 +490,6 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   /** decrease the reference for the current directory */
-  dir_close(cur->dir);
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

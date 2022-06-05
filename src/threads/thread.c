@@ -322,10 +322,12 @@ thread_block (void)
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
   struct thread *cur = thread_current();
+  //printf("now the size of ready list is %u\n", list_size(&ready_list));
   cur->status = THREAD_BLOCKED;
   if (cur != idle_thread)
     --ready_threads; 
     // a thread is blocked can not be scheduled
+  
   schedule ();
 }
 
@@ -409,6 +411,8 @@ thread_exit (void)
 
   --ready_threads;
   list_remove (&thread_current()->allelem);
+  
+
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -760,7 +764,7 @@ thread_schedule_tail (struct thread *prev)
 
   /* Start new time slice. */
   thread_ticks = 0;
-
+  // printf("the new thread name is %s \n", cur->name);
 #ifdef USERPROG
   /* Activate the new address space. */
   if (init_page_dir != NULL)
@@ -772,12 +776,15 @@ thread_schedule_tail (struct thread *prev)
      pull out the rug under itself.  (We don't free
      initial_thread because its memory was not obtained via
      palloc().) */
+  
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
+      //printf("the old thread name is %s \n", prev->name);
       ASSERT (prev != cur);
       #ifdef USERPROG
         /* if it has father, wait its father to free its memory */
         if (prev->parent != NULL) {
+          // printf("the old thread waited by its father %s \n", prev->parent->name);
           return;
         }
       #endif
@@ -795,6 +802,7 @@ thread_schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
+  
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
@@ -849,65 +857,23 @@ void thread_wakeup(int64_t ticks) {
 }
 void thread_insert_ready(struct thread *t) {
   ASSERT(intr_get_level() == INTR_OFF);
-  list_insert_ordered(&ready_list, &t->elem, priority_higher, NULL);
+  list_push_back(&ready_list, &t->elem);
 }
 
-void adjust_elem(struct thread *t) {
-  struct list_elem *elem = list_prev(&t->elem);
-  struct thread *at;
-  list_remove(&t->elem);
-  while(elem->prev != NULL) {
-    at = list_entry(elem, struct thread, elem);
-    if(at->priority >= t->priority) {
-      break;
-    }
-    elem = list_prev(elem);
-  }
-  list_insert(elem->next, &t->elem);
+
+int thread_get_ready_number() {
+  return list_size(&ready_list);
 }
-void thread_acquire_donation(struct thread *dest, struct thread *src, int level) {
-  if(thread_mlfqs) return; // do nothing in MLFQ
-  if(level >= NESTED_MAX) return;
-  // the donation is added to the list whether it is larger than destination priority
-  list_insert_ordered(&dest->donation_list, &src->donation_elem, priority_higher_donation, NULL);
-  
-  if (src->priority > dest->priority) {
-    dest->priority = src->priority;
-    dest->donation_state = 1;
-    adjust_elem(dest);
-    if(dest->wait_lock) {
-      list_remove(&dest->donation_elem);
-      thread_acquire_donation(dest->wait_lock->holder, dest, level + 1);
-    }
-  }
-  
+
+void thread_print_ready_list() {
+  struct list_elem *e;
+  for (e = list_begin (&ready_list); e != list_end (&ready_list);
+       e = list_next (e)) {
+         struct thread *t = list_entry(e, struct thread, elem);
+         printf("why there is a thread %s\n", t->name);
+       }
 }
-void thread_release_donation(struct lock* lock) {
-  if(thread_mlfqs) return; // do nothing in MLFQ
-  struct thread* cur = thread_current();
-  struct list_elem* e;
-  struct thread *t;
-  // remove the donation
-  for(e = list_begin(&cur->donation_list) ; e != list_end(&cur->donation_list) ; e = list_next(e)) {
-    t = list_entry(e, struct thread, donation_elem);
-    if(t->wait_lock == lock) {
-      list_remove(e);
-    }
-  }
-  // update the priority
-  if(list_empty(&cur->donation_list)) {
-    cur->priority = cur->origin_priority;
-    cur->donation_state = 0;
-  }
-  else {
-    t = list_entry(list_begin(&cur->donation_list), struct thread, donation_elem);
-    if(t->priority > cur->origin_priority) {
-      cur->priority = t->priority;
-      cur->donation_state = 1;
-    }
-    else {
-      cur->priority = cur->origin_priority;
-      cur->donation_state = 0;
-    }
-  }
+/* For some intractable bug...*/
+void thread_clear_ready_list() {
+  list_init(&ready_list);
 }

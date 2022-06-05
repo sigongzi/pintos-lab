@@ -49,7 +49,7 @@ check_string(char *uaddr);
 static inline uint32_t Min(uint32_t a, uint32_t b) {
   return a < b ? a : b;
 }
-static const uint32_t BUFSIZE = 128;
+static const uint32_t BUFSIZE = 512;
 static const uint32_t FILENAME_LENGTH = 15; 
 
 
@@ -196,9 +196,9 @@ check_string(char *uaddr) {
 void exit_print(int status) {
   struct thread *cur = thread_current();
   
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   process_clear_file();
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   process_clear_mmap();
   printf ("%s: exit(%d)\n", cur->name, status);
   cur->exit_status = status;
@@ -257,9 +257,9 @@ static uint32_t sys_exec() {
   }
   char *s = (char *)addr;
   if (!check_string(s)) exit_print(-1);
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   tid_t res = process_execute(s);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return res;
 }
 
@@ -274,9 +274,9 @@ static uint32_t sys_create() {
   bool res;
   if (!get_arg(1, &addr) || !get_arg(2, &init_size)) exit_print(-1);
   if (!check_string((char *)addr)) exit_print(-1);
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   res = filesys_create((char *)addr, init_size);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return res;
 }
 
@@ -285,9 +285,9 @@ static uint32_t sys_remove() {
   bool res;
   if(!get_arg(1, &addr)) exit_print(-1);
   if (!check_string((char *)addr)) exit_print(-1);
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   res = filesys_remove((char *)addr);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return res;
 }
 
@@ -296,9 +296,9 @@ static uint32_t sys_open() {
   struct file *f;
   if (!get_arg(1, &addr)) exit_print(-1);
   if(!check_string((char *)addr)) exit_print(-1);
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   f = filesys_open((char *)addr);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
 
   if(f == NULL) return -1;
   return process_add_file(f);
@@ -310,9 +310,9 @@ static uint32_t sys_filesize() {
   if (!get_arg(1, &fd)) exit_print(-1);
   struct file *f = process_find_file(fd);
   if(f == NULL) return -1;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   len = file_length(f);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return len;
 }
 
@@ -341,7 +341,7 @@ static uint32_t sys_read() {
     if (f == NULL || file_isdir(f)) n = -1;
     else {
       
-      lock_acquire(&file_lock);
+      //lock_acquire(&file_lock);
       if (f->pos > file_length(f)) n = -1;
       else {
         uint32_t rd = 0, tmp, ad;
@@ -360,7 +360,7 @@ static uint32_t sys_read() {
         }
         n = rd;
       }
-      lock_release(&file_lock);
+      //lock_release(&file_lock);
       
     }
   }
@@ -406,7 +406,7 @@ static uint32_t sys_write() {
       n = -1;
     }
     else {
-      lock_acquire(&file_lock);
+      //lock_acquire(&file_lock);
       uint32_t wt = 0, tmp, ad;
       while(wt < n) {
         tmp = Min(n - wt, BUFSIZE);
@@ -421,7 +421,7 @@ static uint32_t sys_write() {
         if(ad < tmp) break;
       }
       n = wt;
-      lock_release(&file_lock);
+      //lock_release(&file_lock);
     }
   }
   if(res_for_bad_memory) {
@@ -436,9 +436,9 @@ static uint32_t sys_seek() {
   if (!get_arg(1, &fd) || !get_arg(2, &pos)) exit_print(-1);
   struct file *f = process_find_file(fd);
   if(f == NULL) return -1;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   file_seek(f, pos);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return 0;
 }
 
@@ -448,9 +448,9 @@ static uint32_t sys_tell() {
   if (!get_arg(1, &fd)) exit_print(-1);
   struct file *f = process_find_file(fd);
   if(f == NULL) return -1;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   res = file_tell(f);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return res;
 }
 
@@ -458,9 +458,9 @@ static uint32_t sys_close() {
   uint32_t fd;
   bool res;
   if (!get_arg(1, &fd)) exit_print(-1);
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   res = process_close_file(fd);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   if (!res) return -1;
   return 0;
 }
@@ -484,9 +484,9 @@ static uint32_t sys_mmap() {
 
   if (!is_vm_range_unused(st, pg_round_up(ed))) return -1;
 
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   f = file_reopen(f);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
 
   if(f == NULL) return -1;
 
@@ -511,9 +511,9 @@ static uint32_t sys_chdir() {
   if (!get_arg(1, &addr)) exit_print(-1);
   if (!check_string((char *)addr)) exit_print(-1);
   bool success = 0;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   success = filesys_chdir((char *)addr);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return success;
 }
 
@@ -522,9 +522,9 @@ static uint32_t sys_mkdir() {
   if (!get_arg(1, &addr)) exit_print(-1);
   if (!check_string((char *)addr)) exit_print(-1);
   bool success = 0;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   success = filesys_mkdir((char *)addr);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return success;
 }
 
@@ -537,9 +537,9 @@ static uint32_t sys_readdir() {
   if (f == NULL) return -1;
   bool success = 0;
   memset(file_name, 0, sizeof(file_name));
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   success = file_readdir(f, file_name);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   if(!putnbuf((char *)addr, file_name, strlen(file_name) + 1)) exit_print(-1);
   return success;
 }
@@ -550,9 +550,9 @@ static uint32_t sys_isdir() {
   struct file *f = process_find_file(fd);
   if (f == NULL) return -1;
   uint32_t res;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   res = file_isdir(f);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return res;
 }
 
@@ -562,8 +562,8 @@ static uint32_t sys_inumber() {
   struct file *f = process_find_file(fd);
   if(f == NULL) return -1;
   uint32_t res;
-  lock_acquire(&file_lock);
+  //lock_acquire(&file_lock);
   res = file_inumber(f);
-  lock_release(&file_lock);
+  //lock_release(&file_lock);
   return res;
 }

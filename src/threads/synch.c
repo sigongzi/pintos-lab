@@ -198,8 +198,8 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   bool success;
-  struct thread *cur = thread_current(), *target;
-  enum intr_level oldlevel;
+  struct thread *cur = thread_current();
+
   
   if (thread_mlfqs) {
     sema_down(&lock->semaphore);
@@ -213,12 +213,7 @@ lock_acquire (struct lock *lock)
       return;
     }
     else {
-      target = lock->holder;
       cur->wait_lock = lock;
-      
-      oldlevel = intr_disable();
-      thread_acquire_donation(target, cur, 0);
-      intr_set_level(oldlevel);
 
       sema_down(&lock->semaphore);
       lock->holder = cur;
@@ -260,9 +255,6 @@ lock_release (struct lock *lock)
   enum intr_level oldlevel;
   
   oldlevel = intr_disable();
-  if (!thread_mlfqs) {
-    thread_release_donation(lock);
-  }
   
   lock->holder = NULL;
   sema_up (&lock->semaphore);
@@ -320,12 +312,7 @@ cond_init (struct condition *cond)
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-bool waiter_priority_higher
-(const struct list_elem *a,const struct list_elem *b, void *aux UNUSED) {
-  struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
-  struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
-  return sa->t->priority > sb->t->priority;
-}  
+
 void
 cond_wait (struct condition *cond, struct lock *lock) 
 {
@@ -338,7 +325,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   
   sema_init (&waiter.semaphore, 0);
   waiter.t = thread_current();
-  list_insert_ordered (&cond->waiters, &waiter.elem, waiter_priority_higher, NULL);
+  list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);

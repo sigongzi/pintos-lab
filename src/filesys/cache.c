@@ -16,6 +16,7 @@ static const uint32_t CACHE_PIN = 0x8;
 struct cache_node {
     uint32_t flag;
     block_sector_t sector_idx;
+    struct lock cache_node_lock;
     void *buf;
 };
 
@@ -29,6 +30,7 @@ static struct cache_node* find_sector(block_sector_t);
 static void evict_sector(struct cache_node *info_node) {
     if (info_node->flag & CACHE_P) {
         if (info_node->flag & CACHE_D) {
+            //printf("%d is changed\n", info_node->sector_idx);
             block_write(fs_device, info_node->sector_idx, info_node->buf);
         }
     }
@@ -40,6 +42,7 @@ static void evict_sector(struct cache_node *info_node) {
 // must be called with cache lock
 static uint32_t fetch_pos() {
     static uint32_t pos = 0;
+    int cnt = 0;
     while (true) {
         uint32_t f = cache_info[pos].flag;
         if ((!(f & CACHE_P)) ||
@@ -52,6 +55,11 @@ static uint32_t fetch_pos() {
         if (f & CACHE_A)
             cache_info[pos].flag ^= CACHE_A;
         pos = (pos + 1) & (CACHE_COUNT - 1);
+        ++cnt;
+
+        if (cnt >= 100) {
+            //printf("WARNING!!!\n");
+        }
     }
 }
 
@@ -61,6 +69,8 @@ static struct cache_node* find_sector(block_sector_t sector_idx) {
             return &cache_info[i]; 
         }
     }
+    
+    //printf("try to allocate a new cache for sector %d\n", sector_idx);
     uint32_t t = fetch_pos();
     cache_info[t].flag = CACHE_P;
     cache_info[t].sector_idx = sector_idx;
@@ -74,27 +84,33 @@ void cache_init() {
         cache_info[i].flag = 0;
         cache_info[i].sector_idx = 0;
         cache_info[i].buf = cache_buffer + i * BLOCK_SECTOR_SIZE;
+        lock_init(&cache_info[i].cache_node_lock);
     }
 }
 
 void cache_clear() {
     lock_acquire(&cache_lock);
     for (int i = 0 ; i < CACHE_COUNT ; ++i) {
+        lock_acquire(&cache_info[i].cache_node_lock);
         evict_sector(&cache_info[i]);
+        lock_release(&cache_info[i].cache_node_lock);
     }
     lock_release(&cache_lock);
 }
 
-void cache_write(block_sector_t sector_idx, int sector_ofs, void *buffer, int size) {
+void cache_write(block_sector_t sector_idx, uint32_t sector_ofs, void *buffer, uint32_t size) {
     ASSERT(sector_ofs + size <= BLOCK_SECTOR_SIZE);
 
     lock_acquire(&cache_lock);
     struct cache_node *cn = find_sector(sector_idx);
+    lock_acquire(&cn->cache_node_lock);
     cn->flag |= CACHE_PIN;
     lock_release(&cache_lock);
     cn->flag |= CACHE_A | CACHE_D;
     memcpy(cn->buf + sector_ofs, buffer, size);
     cn->flag ^= CACHE_PIN;
+    lock_release(&cn->cache_node_lock);
+    
     if (sector_idx + 1 < block_size(fs_device)) {
         lock_acquire(&cache_lock);
         cn = find_sector(sector_idx + 1); // fetch next sector
@@ -102,15 +118,20 @@ void cache_write(block_sector_t sector_idx, int sector_ofs, void *buffer, int si
     }
 
 }
-void cache_read(block_sector_t sector_idx, int sector_ofs, void * buffer, int size) {
+void cache_read(block_sector_t sector_idx, uint32_t sector_ofs, void * buffer, uint32_t size) {
     ASSERT(sector_ofs + size <= BLOCK_SECTOR_SIZE);
     lock_acquire(&cache_lock);
+    //printf("get cache lock\n");
     struct cache_node *cn = find_sector(sector_idx);
+    lock_acquire(&cn->cache_node_lock);
+    //printf("get cache node lock\n");
     cn->flag |= CACHE_PIN;
     lock_release(&cache_lock);
     cn->flag |= CACHE_A;
     memcpy(buffer, cn->buf + sector_ofs, size);
     cn->flag ^= CACHE_PIN;
+    lock_release(&cn->cache_node_lock);
+    
     if (sector_idx + 1 < block_size(fs_device)) {
         lock_acquire(&cache_lock);
         cn = find_sector(sector_idx + 1); // fetch next sector

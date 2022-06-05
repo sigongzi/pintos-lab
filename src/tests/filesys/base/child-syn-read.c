@@ -34,7 +34,9 @@ main (int argc, const char *argv[])
   for (i = 0; i < sizeof buf; i++) 
     {
       char c;
+      
       CHECK (read (fd, &c, 1) > 0, "read \"%s\"", file_name);
+      //printf("%d child thread read 1 byte, now it is %dth byte\n", child_idx, i);
       compare_bytes (&c, buf + i, 1, i, file_name);
     }
   close (fd);

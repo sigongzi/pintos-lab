@@ -189,6 +189,7 @@ void thread_insert_ready(struct thread *t);
 void thread_acquire_donation(struct thread *dest, struct thread *src, int level);
 void thread_release_donation(struct lock *lock);
 
-void adjust_elem(struct thread *t);
-
+int thread_get_ready_number();
+void thread_print_ready_list();
+void thread_clear_ready_list();
 #endif /**< threads/thread.h */

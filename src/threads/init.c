@@ -189,7 +189,7 @@ pintos_init (void)
       }
     }
   }
-
+  thread_clear_ready_list();
   /* Finish up. */
   shutdown ();
   thread_exit ();

@@ -60,8 +60,9 @@ void filesys_init(bool format)
    to disk. */
 void filesys_done(void)
 {
-  cache_clear();
+  
   free_map_close();
+  cache_clear();
 }
 
 /** Creates a file named NAME with the given INITIAL_SIZE.
@@ -98,9 +99,13 @@ filesys_open(const char *name)
   struct dir *dir = dir_get_parent(name);
   struct inode *inode = NULL;
   char file_name[NAME_MAX + 1];
+  if(dir == NULL) {
+    return NULL;
+  }
   if (!get_file_name(name, file_name))
   {
-    return false;
+    dir_close(dir);
+    return NULL;
   }
   if (dir != NULL)
     dir_lookup(dir, file_name, &inode);

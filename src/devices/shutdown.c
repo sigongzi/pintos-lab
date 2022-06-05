@@ -28,6 +28,7 @@ static void print_stats (void);
 void
 shutdown (void)
 {
+  ASSERT(thread_get_ready_number() == 0);
   switch (how)
     {
     case SHUTDOWN_POWER_OFF:
